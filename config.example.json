@@ -1,0 +1,14 @@
+{
+  "clemb_path": "C:\\Program Files\\IBM\\SPSS\\Modeler\\19.0\\bin\\clemb.exe",
+  "server": {
+    "hostname": "",
+    "port": 28063,
+    "username": "",
+    "password": "",
+    "server_directory": ""
+  },
+  "defaults": {
+    "timeout": 300,
+    "working_directory": ""
+  }
+}
