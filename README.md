@@ -51,7 +51,7 @@ pip install -e .
   "mcpServers": {
     "spss-clemb-mcp": {
       "command": "python",
-      "args": ["-m", "spss_modeler_clemb.server"],
+      "args": ["-m", "spss_clemb_mcp.server"],
       "cwd": "C:\\Users\\<ユーザー名>\\.mcp-servers\\spss-clemb-mcp"
     }
   }
