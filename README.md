@@ -19,6 +19,59 @@
 
 ## インストール
 
+### 方法 A: インストールスクリプトを使用（推奨）
+
+PowerShell スクリプト `install-spss-clemb-mcp.ps1` を使うと、以下の手順をすべて自動で実行できます。
+
+**実行するもの**:
+1. 前提条件チェック（Python 3.10+、Git、clemb.exe の存在確認）
+2. GitHubリポジトリのクローン（既存の場合は `git pull`）
+3. Python 依存パッケージのインストール（`pip install -e .`）
+4. `config.json` の生成（`config.example.json` をコピーして `clemb_path` を自動設定）
+5. Bob の MCP 設定ファイル（`~/.bob/settings/mcp.json`）へのサーバー登録
+6. サーバー起動テスト（3秒間起動確認）
+
+**実行方法**:
+
+```powershell
+# スクリプトをダウンロードして実行
+irm https://raw.githubusercontent.com/hkwd/spss-clemb-mcp/main/install-spss-clemb-mcp.ps1 | iex
+```
+
+または、スクリプトファイルを直接実行：
+
+```powershell
+.\install-spss-clemb-mcp.ps1
+```
+
+**インストール先**:
+| 項目 | パス |
+|------|------|
+| サーバー本体 | `%USERPROFILE%\.mcp-servers\spss-clemb-mcp` |
+| MCP 設定ファイル | `%USERPROFILE%\.bob\settings\mcp.json` |
+| サーバー設定ファイル | `%USERPROFILE%\.mcp-servers\spss-clemb-mcp\config.json` |
+
+**スクリプト内の設定変更**:
+
+スクリプト冒頭の Config セクションを編集することで、インストール先などをカスタマイズできます：
+
+```powershell
+$InstallDir = "$env:USERPROFILE\.mcp-servers\spss-clemb-mcp"  # インストール先
+$McpJson    = "$env:USERPROFILE\.bob\settings\mcp.json"        # MCP設定ファイル
+$ClembPath  = "C:\Program Files\IBM\SPSS\Modeler\19.0\bin\clemb.exe"  # clemb.exe パス
+```
+
+> ワークスペース単位の MCP 設定を使う場合は `$McpJson = ".bob\mcp.json"` に変更してください（スクリプト内のコメントを参照）。
+
+**インストール完了後の次のステップ**:
+1. `config.json` を編集してサーバー接続情報を設定（SPSS Modeler Server を使う場合）
+2. Bob を再起動
+3. MCP パネルに `spss-clemb-mcp` が表示されることを確認
+
+---
+
+### 方法 B: 手動インストール
+
 ### 1. プロジェクトファイルのコピー
 
 ```bash
