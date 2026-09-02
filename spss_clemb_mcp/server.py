@@ -4,6 +4,7 @@ SPSS Modeler clemb.exe を実行するMCPサーバー
 """
 import asyncio
 import subprocess
+import functools
 import json
 import sys
 import os
@@ -224,47 +225,55 @@ async def execute_clemb(arguments: dict) -> list[TextContent]:
         stream_file = _resolve_local_path(stream_file, working_directory)
 
     try:
-        # スクリプトを含む場合はPowerShell経由で実行
+        # clemb.exe を直接 subprocess で実行（スクリプトあり・なし共通）
+        # PowerShell経由だと chcp 等の差異で非同期問題が再発するため直接呼び出しに統一
+        cmd = [config.clemb_path]
+
+        # サーバー接続パラメータ
+        if hostname:
+            cmd.extend(["-server", "-hostname", hostname])
+            if port:
+                cmd.extend(["-port", str(port)])
+            if username:
+                cmd.extend(["-username", username])
+            if password:
+                cmd.extend(["-password", password])
+            if server_directory:
+                cmd.extend(["-server_directory", server_directory])
+
+        # ストリームファイル
+        if stream_file:
+            cmd.extend(["-stream", stream_file])
+
+        # スクリプトファイル
         if actual_script_file:
-            ps_cmd = f'chcp 65001 > $null; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $env:JAVA_TOOL_OPTIONS="-Dfile.encoding=UTF-8 -Dclient.encoding.override=UTF-8 -Dsun.jnu.encoding=UTF-8"; & "{config.clemb_path}"'
+            cmd.extend(["-script", actual_script_file])
+        elif not stream_file:
+            return [TextContent(
+                type="text",
+                text="Error: 'stream_file' is required when script is not provided"
+            )]
 
-            # サーバー接続パラメータ
-            if hostname:
-                ps_cmd += f' -server -hostname "{hostname}"'
-                if port:
-                    ps_cmd += f' -port {port}'
-                if username:
-                    ps_cmd += f' -username "{username}"'
-                if password:
-                    ps_cmd += f' -password "{password}"'
-                if server_directory:
-                    ps_cmd += f' -server_directory "{server_directory}"'
+        # パラメータ
+        for key, value in parameters.items():
+            cmd.extend(["-P", f"{key}={value}"])
 
-            # ストリームファイル
-            if stream_file:
-                ps_cmd += f' -stream "{stream_file}"'
+        # 実行
+        cmd.append("-execute")
 
-            # スクリプトファイル
-            ps_cmd += f' -script "{actual_script_file}"'
+        # ログファイル
+        if log_file:
+            cmd.extend(["-log", log_file])
 
-            # パラメータ（スクリプト実行時）
-            for key, value in parameters.items():
-                ps_cmd += f' -P "{key}={value}"'
+        env = os.environ.copy()
+        env['JAVA_TOOL_OPTIONS'] = '-Dfile.encoding=UTF-8 -Dclient.encoding.override=UTF-8 -Dsun.jnu.encoding=UTF-8'
+        env['PYTHONIOENCODING'] = 'utf-8'
 
-            # 実行
-            ps_cmd += ' -execute'
-
-            # ログファイル
-            if log_file:
-                ps_cmd += f' -log "{log_file}"'
-
-            cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd]
-
-            env = os.environ.copy()
-            env['JAVA_TOOL_OPTIONS'] = '-Dfile.encoding=UTF-8 -Dclient.encoding.override=UTF-8 -Dsun.jnu.encoding=UTF-8'
-            env['PYTHONIOENCODING'] = 'utf-8'
-
-            result = subprocess.run(
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None,
+            functools.partial(
+                subprocess.run,
                 cmd,
                 cwd=working_directory,
                 capture_output=True,
@@ -272,67 +281,17 @@ async def execute_clemb(arguments: dict) -> list[TextContent]:
                 encoding='utf-8',
                 errors='replace',
                 timeout=config.default_timeout,
-                env=env
+                env=env,
             )
+        )
 
-            output = f"Exit Code: {result.returncode}\n\n"
-            output += f"=== COMMAND ===\n{ps_cmd}\n\n"
-            output += "=== STDOUT ===\n"
-            output += (result.stdout if result.stdout else "(empty)") + "\n"
-            output += "\n=== STDERR ===\n"
-            output += (result.stderr if result.stderr else "(empty)") + "\n"
-        else:
-            # ストリームのみの場合は直接実行
-            if not stream_file:
-                return [TextContent(
-                    type="text",
-                    text="Error: 'stream_file' is required when script is not provided"
-                )]
-
-            cmd = [config.clemb_path]
-
-            # サーバー接続パラメータ
-            if hostname:
-                cmd.extend(["-server", "-hostname", hostname])
-                if port:
-                    cmd.extend(["-port", str(port)])
-                if username:
-                    cmd.extend(["-username", username])
-                if password:
-                    cmd.extend(["-password", password])
-                if server_directory:
-                    cmd.extend(["-server_directory", server_directory])
-
-            # ストリームファイル
-            cmd.extend(["-stream", stream_file, "-execute"])
-
-            # パラメータ
-            for key, value in parameters.items():
-                cmd.extend(["-P", f"{key}={value}"])
-
-            # ログファイル
-            if log_file:
-                cmd.extend(["-log", log_file])
-
-            env = os.environ.copy()
-            env['JAVA_TOOL_OPTIONS'] = '-Dfile.encoding=UTF-8 -Dclient.encoding.override=UTF-8 -Dsun.jnu.encoding=UTF-8'
-
-            result = subprocess.run(
-                cmd,
-                cwd=working_directory,
-                capture_output=True,
-                text=True,
-                encoding='utf-8',
-                errors='replace',
-                timeout=config.default_timeout,
-                env=env
-            )
-
-            output = f"Exit Code: {result.returncode}\n\n"
-            output += "=== STDOUT ===\n"
-            output += (result.stdout if result.stdout else "(empty)") + "\n"
-            output += "\n=== STDERR ===\n"
-            output += (result.stderr if result.stderr else "(empty)") + "\n"
+        cmd_str = " ".join(f'"{c}"' if " " in c else c for c in cmd)
+        output = f"Exit Code: {result.returncode}\n\n"
+        output += f"=== COMMAND ===\n{cmd_str}\n\n"
+        output += "=== STDOUT ===\n"
+        output += (result.stdout if result.stdout else "(empty)") + "\n"
+        output += "\n=== STDERR ===\n"
+        output += (result.stderr if result.stderr else "(empty)") + "\n"
 
         # ログファイルの内容を追加
         if log_file:
